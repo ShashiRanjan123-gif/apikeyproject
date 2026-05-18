@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const bcrypt = require("bcryptjs");
 const axios = require("axios");
 
 const app = express();
@@ -28,10 +29,10 @@ mongoose
   });
 
 /* ======================================
-   CANDIDATE SCHEMA
+   STUDENT SCHEMA
 ====================================== */
 
-const candidateSchema = new mongoose.Schema({
+const studentSchema = new mongoose.Schema({
 
   name: {
     type: String,
@@ -44,24 +45,9 @@ const candidateSchema = new mongoose.Schema({
     unique: true,
   },
 
-  skills: {
-    type: [String],
-    default: [],
-  },
-
-  experience: {
-    type: Number,
-    default: 0,
-  },
-
-  projects: {
+  password: {
     type: String,
-    default: "",
-  },
-
-  bio: {
-    type: String,
-    default: "",
+    required: true,
   },
 
   createdAt: {
@@ -71,8 +57,57 @@ const candidateSchema = new mongoose.Schema({
 
 });
 
-const Candidate =
-  mongoose.model("Candidate", candidateSchema);
+const Student =
+  mongoose.model("Student", studentSchema);
+
+/* ======================================
+   GRIEVANCE SCHEMA
+====================================== */
+
+const grievanceSchema = new mongoose.Schema({
+
+  title: {
+    type: String,
+    required: true,
+  },
+
+  description: {
+    type: String,
+    required: true,
+  },
+
+  category: {
+    type: String,
+    enum: [
+      "Academic",
+      "Hostel",
+      "Transport",
+      "Other",
+    ],
+    default: "Other",
+  },
+
+  status: {
+    type: String,
+    enum: [
+      "Pending",
+      "Resolved",
+    ],
+    default: "Pending",
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+
+});
+
+const Grievance =
+  mongoose.model(
+    "Grievance",
+    grievanceSchema
+  );
 
 /* ======================================
    HOME ROUTE
@@ -85,69 +120,68 @@ app.get("/", (req, res) => {
     success: true,
 
     message:
-      "🚀 AI Candidate Shortlisting API Running",
+      "🚀 Student Grievance API Running",
 
   });
 
 });
 
 /* ======================================
-   ADD CANDIDATE
+   REGISTER
 ====================================== */
 
-app.post("/api/candidates", async (req, res) => {
+app.post("/api/register", async (req, res) => {
 
   try {
 
     const {
-
       name,
       email,
-      skills,
-      experience,
-      projects,
-      bio,
-
+      password,
     } = req.body;
 
-    if (!name || !email) {
+    if (
+      !name ||
+      !email ||
+      !password
+    ) {
 
       return res.status(400).json({
 
         success: false,
 
         message:
-          "Name and Email are required",
+          "All fields are required",
 
       });
 
     }
 
-    const existingCandidate =
-      await Candidate.findOne({ email });
+    const existingStudent =
+      await Student.findOne({ email });
 
-    if (existingCandidate) {
+    if (existingStudent) {
 
       return res.status(400).json({
 
         success: false,
 
         message:
-          "Candidate already exists",
+          "Email already exists",
 
       });
 
     }
 
-    const candidate =
-      await Candidate.create({
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
+
+    const student =
+      await Student.create({
 
         name,
         email,
-        skills,
-        experience,
-        projects,
-        bio,
+        password: hashedPassword,
 
       });
 
@@ -156,51 +190,9 @@ app.post("/api/candidates", async (req, res) => {
       success: true,
 
       message:
-        "✅ Candidate Added Successfully",
+        "✅ Registration Successful",
 
-      candidate,
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
-      message:
-        "❌ Failed to Add Candidate",
-
-    });
-
-  }
-
-});
-
-/* ======================================
-   GET ALL CANDIDATES
-====================================== */
-
-app.get("/api/candidates", async (req, res) => {
-
-  try {
-
-    const candidates =
-      await Candidate.find().sort({
-
-        createdAt: -1,
-
-      });
-
-    res.status(200).json({
-
-      success: true,
-
-      total: candidates.length,
-
-      candidates,
+      student,
 
     });
 
@@ -213,7 +205,7 @@ app.get("/api/candidates", async (req, res) => {
       success: false,
 
       message:
-        "❌ Failed to Fetch Candidates",
+        "❌ Registration Failed",
 
     });
 
@@ -222,24 +214,48 @@ app.get("/api/candidates", async (req, res) => {
 });
 
 /* ======================================
-   GET SINGLE CANDIDATE
+   LOGIN
 ====================================== */
 
-app.get("/api/candidates/:id", async (req, res) => {
+app.post("/api/login", async (req, res) => {
 
   try {
 
-    const candidate =
-      await Candidate.findById(req.params.id);
+    const {
+      email,
+      password,
+    } = req.body;
 
-    if (!candidate) {
+    const student =
+      await Student.findOne({ email });
 
-      return res.status(404).json({
+    if (!student) {
+
+      return res.status(400).json({
 
         success: false,
 
         message:
-          "Candidate not found",
+          "Invalid Email",
+
+      });
+
+    }
+
+    const isMatch =
+      await bcrypt.compare(
+        password,
+        student.password
+      );
+
+    if (!isMatch) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        message:
+          "Invalid Password",
 
       });
 
@@ -249,441 +265,31 @@ app.get("/api/candidates/:id", async (req, res) => {
 
       success: true,
 
-      candidate,
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
       message:
-        "❌ Error Fetching Candidate",
+        "✅ Login Successful",
 
-    });
+      student: {
 
-  }
+        id: student._id,
 
-});
+        name: student.name,
 
-/* ======================================
-   UPDATE CANDIDATE
-====================================== */
-
-app.put("/api/candidates/:id", async (req, res) => {
-
-  try {
-
-    const updatedCandidate =
-      await Candidate.findByIdAndUpdate(
-
-        req.params.id,
-
-        req.body,
-
-        {
-          new: true,
-        }
-
-      );
-
-    res.status(200).json({
-
-      success: true,
-
-      message:
-        "✅ Candidate Updated",
-
-      updatedCandidate,
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
-      message:
-        "❌ Update Failed",
-
-    });
-
-  }
-
-});
-
-/* ======================================
-   DELETE CANDIDATE
-====================================== */
-
-app.delete("/api/candidates/:id", async (req, res) => {
-
-  try {
-
-    await Candidate.findByIdAndDelete(
-      req.params.id
-    );
-
-    res.status(200).json({
-
-      success: true,
-
-      message:
-        "🗑️ Candidate Deleted",
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
-      message:
-        "❌ Delete Failed",
-
-    });
-
-  }
-
-});
-
-/* ======================================
-   SEARCH CANDIDATES
-====================================== */
-
-app.get("/api/search", async (req, res) => {
-
-  try {
-
-    const keyword =
-      req.query.keyword || "";
-
-    const candidates =
-      await Candidate.find({
-
-        $or: [
-
-          {
-            name: {
-              $regex: keyword,
-              $options: "i",
-            },
-          },
-
-          {
-            skills: {
-              $elemMatch: {
-                $regex: keyword,
-                $options: "i",
-              },
-            },
-          },
-
-        ],
-
-      });
-
-    res.status(200).json({
-
-      success: true,
-
-      results: candidates.length,
-
-      candidates,
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
-      message:
-        "❌ Search Failed",
-
-    });
-
-  }
-
-});
-
-/* ======================================
-   MATCH CANDIDATES
-====================================== */
-
-app.post("/api/match", async (req, res) => {
-
-  try {
-
-    const {
-
-      requiredSkills,
-      minExperience,
-      preferredSkills,
-
-    } = req.body;
-
-    const candidates =
-      await Candidate.find();
-
-    const results =
-      candidates.map((candidate) => {
-
-        const matchedSkills =
-          candidate.skills.filter((skill) =>
-
-            requiredSkills.includes(skill)
-
-          );
-
-        const preferredMatched =
-          preferredSkills?.filter((skill) =>
-
-            candidate.skills.includes(skill)
-
-          ) || [];
-
-        const skillScore =
-          requiredSkills.length > 0
-
-            ? (
-                matchedSkills.length /
-                requiredSkills.length
-              ) * 100
-
-            : 0;
-
-        let experienceScore = 0;
-
-        if (
-          candidate.experience >=
-          minExperience
-        ) {
-
-          experienceScore = 20;
-
-        }
-
-        const preferredScore =
-          preferredMatched.length * 10;
-
-        const totalScore =
-          skillScore +
-          experienceScore +
-          preferredScore;
-
-        let ranking = "Low";
-
-        if (totalScore >= 90) {
-
-          ranking = "High";
-
-        } else if (totalScore >= 60) {
-
-          ranking = "Medium";
-
-        }
-
-        return {
-
-          id: candidate._id,
-
-          name: candidate.name,
-
-          email: candidate.email,
-
-          skills: candidate.skills,
-
-          experience: candidate.experience,
-
-          matchedSkills,
-
-          preferredMatched,
-
-          matchScore:
-            Math.min(totalScore, 100).toFixed(2),
-
-          ranking,
-
-        };
-
-      });
-
-    results.sort(
-
-      (a, b) => b.matchScore - a.matchScore
-
-    );
-
-    res.status(200).json({
-
-      success: true,
-
-      totalMatched: results.length,
-
-      shortlistedCandidates: results,
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
-      message:
-        "❌ Matching Failed",
-
-    });
-
-  }
-
-});
-
-/* ======================================
-   AI SHORTLISTING
-====================================== */
-
-app.post("/api/ai/shortlist", async (req, res) => {
-
-  try {
-
-    const {
-
-      requiredSkills,
-      minExperience,
-
-    } = req.body;
-
-    const candidates =
-      await Candidate.find();
-
-    const formattedCandidates =
-      candidates
-        .map(
-          (candidate, index) => `
-
-${index + 1}. ${candidate.name}
-
-Skills:
-${candidate.skills.join(", ")}
-
-Experience:
-${candidate.experience} years
-
-Projects:
-${candidate.projects}
-
-Bio:
-${candidate.bio}
-
-`
-        )
-        .join("\n");
-
-    const prompt = `
-
-You are an expert HR recruiter.
-
-JOB REQUIREMENTS:
-
-Required Skills:
-${requiredSkills.join(", ")}
-
-Minimum Experience:
-${minExperience} years
-
-CANDIDATES:
-
-${formattedCandidates}
-
-TASK:
-
-1. Rank candidates from best to worst
-2. Give match percentage
-3. Explain suitability
-4. Suggest top 3 candidates
-5. Mention strengths and weaknesses
-
-`;
-
-    const response = await axios.post(
-
-      "https://openrouter.ai/api/v1/chat/completions",
-
-      {
-
-        model: "openai/gpt-4o-mini",
-
-        max_tokens: 1000,
-
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
+        email: student.email,
 
       },
 
-      {
-
-        headers: {
-
-          Authorization:
-            `Bearer ${process.env.OPENROUTER_API_KEY}`,
-
-          "Content-Type":
-            "application/json",
-
-        },
-
-      }
-
-    );
-
-    const aiText =
-      response.data.choices[0].message.content;
-
-    res.status(200).json({
-
-      success: true,
-
-      aiRecommendation: aiText,
-
     });
 
   } catch (error) {
 
-    console.log(
-      error.response?.data || error.message
-    );
+    console.log(error);
 
     res.status(500).json({
 
       success: false,
 
       message:
-        "❌ AI Shortlisting Failed",
-
-      error:
-        error.response?.data ||
-        error.message,
+        "❌ Login Failed",
 
     });
 
@@ -692,78 +298,391 @@ TASK:
 });
 
 /* ======================================
-   AI INTERVIEW QUESTIONS
+   SUBMIT GRIEVANCE
 ====================================== */
 
 app.post(
-
-  "/api/ai/interview-questions",
-
+  "/api/grievances",
   async (req, res) => {
 
     try {
 
-      const { skills } = req.body;
+      const {
 
-      const prompt = `
+        title,
+        description,
+        category,
 
-Generate 10 technical interview questions
-for these skills:
+      } = req.body;
 
-${skills.join(", ")}
+      const grievance =
+        await Grievance.create({
 
-Also provide short answers.
+          title,
+          description,
+          category,
 
-`;
+        });
 
-      const response = await axios.post(
+      res.status(201).json({
 
-        "https://openrouter.ai/api/v1/chat/completions",
+        success: true,
 
-        {
+        message:
+          "✅ Grievance Submitted",
 
-          model: "openai/gpt-4o-mini",
+        grievance,
 
-          max_tokens: 1000,
+      });
 
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
+    } catch (error) {
 
-        },
+      console.log(error);
 
-        {
+      res.status(500).json({
 
-          headers: {
+        success: false,
 
-            Authorization:
-              `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        message:
+          "❌ Submission Failed",
 
-            "Content-Type":
-              "application/json",
+      });
 
-          },
+    }
 
-        }
+  }
+);
 
+/* ======================================
+   GET ALL GRIEVANCES
+====================================== */
+
+app.get(
+  "/api/grievances",
+  async (req, res) => {
+
+    try {
+
+      const grievances =
+        await Grievance.find().sort({
+
+          createdAt: -1,
+
+        });
+
+      res.status(200).json({
+
+        success: true,
+
+        total: grievances.length,
+
+        grievances,
+
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          "❌ Failed to Fetch",
+
+      });
+
+    }
+
+  }
+);
+
+/* ======================================
+   GET SINGLE GRIEVANCE
+====================================== */
+
+app.get(
+  "/api/grievances/:id",
+  async (req, res) => {
+
+    try {
+
+      const grievance =
+        await Grievance.findById(
+          req.params.id
+        );
+
+      if (!grievance) {
+
+        return res.status(404).json({
+
+          success: false,
+
+          message:
+            "Grievance not found",
+
+        });
+
+      }
+
+      res.status(200).json({
+
+        success: true,
+
+        grievance,
+
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          "❌ Error Fetching",
+
+      });
+
+    }
+
+  }
+);
+
+/* ======================================
+   UPDATE GRIEVANCE
+====================================== */
+
+app.put(
+  "/api/grievances/:id",
+  async (req, res) => {
+
+    try {
+
+      const updated =
+        await Grievance.findByIdAndUpdate(
+
+          req.params.id,
+
+          req.body,
+
+          {
+            new: true,
+          }
+
+        );
+
+      res.status(200).json({
+
+        success: true,
+
+        message:
+          "✅ Grievance Updated",
+
+        updated,
+
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          "❌ Update Failed",
+
+      });
+
+    }
+
+  }
+);
+
+/* ======================================
+   DELETE GRIEVANCE
+====================================== */
+
+app.delete(
+  "/api/grievances/:id",
+  async (req, res) => {
+
+    try {
+
+      await Grievance.findByIdAndDelete(
+        req.params.id
       );
 
       res.status(200).json({
 
         success: true,
 
-        questions:
-          response.data.choices[0].message.content,
+        message:
+          "🗑️ Grievance Deleted",
+
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          "❌ Delete Failed",
+
+      });
+
+    }
+
+  }
+);
+
+/* ======================================
+   SEARCH GRIEVANCE
+====================================== */
+
+app.get(
+  "/api/grievances/search",
+  async (req, res) => {
+
+    try {
+
+      const title =
+        req.query.title || "";
+
+      const grievances =
+        await Grievance.find({
+
+          title: {
+
+            $regex: title,
+
+            $options: "i",
+
+          },
+
+        });
+
+      res.status(200).json({
+
+        success: true,
+
+        results:
+          grievances.length,
+
+        grievances,
+
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          "❌ Search Failed",
+
+      });
+
+    }
+
+  }
+);
+
+/* ======================================
+   AI HELP
+====================================== */
+
+app.post(
+  "/api/ai/help",
+  async (req, res) => {
+
+    try {
+
+      const { problem } = req.body;
+
+      const prompt = `
+
+You are a helpful college support assistant.
+
+Student Problem:
+${problem}
+
+Give:
+1. Proper advice
+2. Solution
+3. Steps to solve issue
+4. Professional response
+
+`;
+
+      const response =
+        await axios.post(
+
+          "https://openrouter.ai/api/v1/chat/completions",
+
+          {
+
+            model:
+              "openai/gpt-4o-mini",
+
+            max_tokens: 500,
+
+            messages: [
+
+              {
+                role: "user",
+                content: prompt,
+              },
+
+            ],
+
+          },
+
+          {
+
+            headers: {
+
+              Authorization:
+                `Bearer ${process.env.OPENROUTER_API_KEY}`,
+
+              "Content-Type":
+                "application/json",
+
+            },
+
+          }
+
+        );
+
+      const aiText =
+        response.data.choices[0]
+          .message.content;
+
+      res.status(200).json({
+
+        success: true,
+
+        response: aiText,
 
       });
 
     } catch (error) {
 
       console.log(
-        error.response?.data || error.message
+        error.response?.data ||
+        error.message
       );
 
       res.status(500).json({
@@ -771,14 +690,13 @@ Also provide short answers.
         success: false,
 
         message:
-          "❌ Failed to Generate Questions",
+          "❌ AI Failed",
 
       });
 
     }
 
   }
-
 );
 
 /* ======================================
